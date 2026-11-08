@@ -1,9 +1,27 @@
 # 🁫 Domino (Rust)
 
-Jeu de domino en réseau, écrit en Rust. Un **serveur autoritaire** (la logique est
-intégralement côté serveur, rien n'est trichable) + un **client web** dans le
-navigateur — aucun install pour les joueurs. Vos amis rejoignent votre table via
-l'adresse IP de votre machine sur le réseau local.
+Jeu de domino **multijoueur en réseau local (LAN)**, écrit en Rust. Un hôte lance
+le serveur, ses amis ouvrent l'adresse affichée dans leur navigateur — même Wi-Fi,
+**aucun install**, 2 à 4 joueurs autour de la même table. La logique est intégralement
+côté serveur (**serveur autoritaire**, rien n'est trichable) ; le client web embarqué
+dans le binaire rend la table directement dans le navigateur.
+
+## Jouer à plusieurs (réseau local)
+
+1. L'hôte lance le jeu : `./serveur.sh` — l'adresse LAN s'affiche au démarrage :
+   ```
+   🁫  Domino — serveur prêt
+       Vous  : http://localhost:8080
+       LAN   : http://192.168.0.40:8080
+       Cible : 100 pts — vos amis ouvrent ce lien dans leur navigateur.
+   ```
+2. Chaque ami (téléphone, tablette ou ordinateur **sur le même réseau**) ouvre
+   l'adresse `http://192.168.x.x:8080` dans son navigateur.
+3. Tout le monde passe par le menu principal (nom, score cible, taille de table),
+   puis un joueur lance la partie — les sièges vides peuvent être complétés de bots.
+
+Chaque client voit la même table en temps réel ; si un joueur ferme sa page en
+cours de manche, un bot reprend sa main pour ne jamais bloquer la partie.
 
 | Menu principal | Table en jeu (desktop) | Mobile |
 |---|---|---|
@@ -41,9 +59,8 @@ cargo build --release -p domino-server   # une seule fois (ou après modificatio
 **recompile automatiquement** si le code ou la page web a changé depuis le
 dernier build (plus jamais d'ancienne version servie par accident).
 
-Chacun ouvre son lien dans son navigateur, passe par le **menu principal**
-(nom, score cible 50–300, table de 2/3/4 joueurs, « compléter avec des bots »),
-puis lance la partie. L'adresse LAN est affichée au démarrage pour les amis.
+Le flux complet (hôte + amis sur le même réseau) est décrit dans
+[Jouer à plusieurs](#jouer-à-plusieurs-réseau-local).
 
 ### Options manuelles (sans script)
 
