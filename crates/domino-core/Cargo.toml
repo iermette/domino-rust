@@ -1,0 +1,9 @@
+[package]
+name = "domino-core"
+description = "Logique pure du jeu de domino (règles, bots, état de partie)"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+rand = { workspace = true }
+serde = { workspace = true }

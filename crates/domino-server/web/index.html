@@ -1,0 +1,823 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:,">
+<title>Domino — table</title>
+<!-- Typo : Fredoka (titres) + Nunito (corps) — profil "Playful Creative" -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  /* ============ PALETTE (felt vert + or, style jeu de société) ============ */
+  :root {
+    --felt-1: #2fae4f;   /* centre du felt (clair) */
+    --felt-2: #1c8a3d;   /* milieu */
+    --felt-3: #146b2e;   /* bords */
+    --felt-4: #0e5223;   /* coins (vignette) */
+
+    --tile-hi:  #ffffff; /* face du domino (haut) — blanc net */
+    --tile-lo:  #f0eee7; /* face du domino (bas) — profondeur très légère */
+    --tile-edge:#d8d5cc; /* liseré du domino (gris clair) */
+    --pip:      #1b1e26; /* pointes noires */
+
+    --ink:      #17251b; /* texte sombre sur fond clair */
+    --paper:    #ffffff;
+    --muted:    #dfeee2; /* texte clair atténué (sur felt) */
+
+    --cta:      #2f80ed; /* bouton principal bleu (référence GSoft) */
+    --cta-hi:   #4a93f5;
+    --cta-lo:   #1f6fd0;
+    --gold:     #f5b301; /* accent or / tour active */
+
+    --ring-0: #f59e0b;  /* vous (or) */
+    --ring-1: #ef4444;  /* corail */
+    --ring-2: #14b8a6;  /* sarcelle */
+    --ring-3: #8b5cf6;  /* violet */
+
+    --shadow-chunk: 0 4px 0 rgba(0,0,0,.18);
+    --shadow-soft:  0 10px 22px rgba(0,0,0,.28);
+  }
+
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    color: var(--paper);
+    font-family: "Nunito", system-ui, -apple-system, sans-serif;
+    /* Felt vert : dégradé radial + texture de points subtile */
+    background-color: var(--felt-2);
+    background-image:
+      radial-gradient(rgba(255,255,255,.035) 1px, transparent 1.4px),
+      radial-gradient(130% 100% at 50% 28%, var(--felt-1) 0%, var(--felt-2) 46%, var(--felt-3) 76%, var(--felt-4) 100%);
+    background-size: 7px 7px, cover;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ============ TABLE (plein écran, colonne flex) ============ */
+  #table { position: relative; min-height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+  /* Vignette des bords/coins pour l'effet "table" */
+  #table::before {
+    content: ""; position: absolute; inset: 0; pointer-events: none; z-index: 1;
+    background: radial-gradient(145% 125% at 50% 42%, transparent 52%, rgba(0,0,0,.38) 100%);
+  }
+
+  /* ============ BARRE HAUTE : avatars + HUD ============ */
+  #topbar {
+    position: relative; z-index: 3;
+    display: flex; align-items: flex-start; justify-content: center;
+    gap: 14px; padding: 16px clamp(12px, 3vw, 28px) 6px; flex-wrap: wrap;
+  }
+
+  /* --- joueurs disposés AUTOUR de la table (overlay sur #boardwrap) --- */
+  #seats { position: absolute; inset: 0; z-index: 3; pointer-events: none; }
+  .seat { width: 96px; text-align: center; position: absolute; transform: translate(-50%, -50%); }
+  /* Moi en bas (au-dessus de ma main) ; le joueur suivant est à gauche, comme en vrai. */
+  .seat.pos-top    { left: 50%; top: clamp(2px, 1.6vh, 14px); transform: translateX(-50%); }
+  .seat.pos-bottom { left: 50%; bottom: clamp(2px, 1.6vh, 14px); transform: translateX(-50%); }
+  .seat.pos-left   { left: clamp(4px, 1.8vw, 22px); top: 46%; transform: translateY(-50%); }
+  .seat.pos-right  { right: clamp(4px, 1.8vw, 22px); top: 46%; transform: translateY(-50%); }
+  .avatar {
+    width: 58px; height: 58px; margin: 0 auto; border-radius: 50%;
+    display: grid; place-items: center; position: relative; overflow: hidden;
+    font-family: "Fredoka", sans-serif; font-weight: 600; font-size: 24px; color: #fff;
+    background: radial-gradient(circle at 34% 28%, rgba(255,255,255,.5), rgba(255,255,255,0) 60%), var(--ring);
+    border: 4px solid #fff;
+    box-shadow: var(--shadow-soft), inset 0 -3px 6px rgba(0,0,0,.25);
+    transition: transform .18s ease, box-shadow .18s ease;
+  }
+  /* Visuel Gemini (web/avatars/avatarN.png) — l'initiale reste en repli si le PNG est absent. */
+  .avatar img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; border-radius: 50%; }
+  .seat.you .avatar { border-color: #fff7df; }
+  .seat.turn .avatar {
+    border-color: var(--gold);
+    animation: turnpulse 1.6s ease-in-out infinite;
+  }
+  @keyframes turnpulse {
+    0%,100% { box-shadow: 0 0 0 4px rgba(245,179,1,.35), var(--shadow-soft); transform: translateY(-2px) scale(1.04); }
+    50%     { box-shadow: 0 0 0 9px rgba(245,179,1,.12), var(--shadow-soft); transform: translateY(-2px) scale(1.04); }
+  }
+  .sname { margin-top: 6px; font-weight: 800; font-size: 13.5px; line-height: 1.1; text-shadow: 0 1px 2px rgba(0,0,0,.4); word-break: break-word; }
+  .spill {
+    margin: 4px auto 0; display: inline-block; min-width: 58px;
+    background: var(--paper); color: var(--ink); border-radius: 20px;
+    font-size: 12.5px; font-weight: 800; padding: 2px 9px;
+    box-shadow: 0 2px 4px rgba(0,0,0,.3), inset 0 -2px 0 rgba(0,0,0,.06);
+  }
+  .spill b { color: #b45309; }
+  .stags { margin-top: 4px; min-height: 15px; display: flex; gap: 3px; justify-content: center; flex-wrap: wrap; }
+
+  .tag { font-size: 9.5px; font-weight: 800; letter-spacing: .3px; text-transform: uppercase;
+         padding: 1px 6px; border-radius: 20px; line-height: 1.4; }
+  .tag-bot { background: #7c3aed; color: #fff; }
+  .tag-off { background: rgba(0,0,0,.5); color: #ffd9d9; }
+  .tag-you { background: var(--gold); color: #4a3200; }
+
+  /* Badge d'action : dernière action du joueur (domino joué / passe) — persiste
+     jusqu'à son prochain tour, comme demandé. */
+  @keyframes badgePop { from { transform: scale(.4); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+  .abadge { margin-top: 5px; display: inline-flex; align-items: center; gap: 5px; max-width: 108%;
+    background: rgba(8,32,16,.74); border: 1px solid rgba(245,179,1,.55); color: #ffe9a8;
+    font-size: 10.5px; font-weight: 800; letter-spacing: .2px; padding: 3px 8px; border-radius: 14px;
+    box-shadow: 0 2px 6px rgba(0,0,0,.35); animation: badgePop .3s cubic-bezier(.2,1.7,.4,1); white-space: nowrap; pointer-events: auto; }
+  .abadge.pass { border-color: rgba(255,255,255,.38); color: #e9f1ec; }
+  /* mini-domino (pips) dans le badge */
+  .tile.mini { border-radius: 4px; box-shadow: 0 1px 3px rgba(0,0,0,.4); flex: none; }
+  .tile.mini::before { display: none; }
+  .tile.mini .half { width: 15px; padding: 9%; }
+
+  /* --- HUD (pills d'info à droite) --- */
+  #hud { display: flex; gap: 7px; align-items: center; flex-wrap: wrap; justify-content: flex-end; max-width: 60%; }
+  .pill {
+    background: rgba(10,40,20,.5); color: var(--muted); border: 1px solid rgba(255,255,255,.14);
+    backdrop-filter: blur(3px);
+    border-radius: 20px; padding: 6px 12px; font-size: 12.5px; font-weight: 700; white-space: nowrap;
+  }
+  .pill b { color: #fff; }
+  .pill.phase { background: rgba(245,179,1,.16); border-color: rgba(245,179,1,.4); color: #ffe9a8; }
+
+  /* point de connexion */
+  .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; box-shadow: 0 0 6px currentColor; }
+  .dot.on  { background: #4ade80; color: #4ade80; }
+  .dot.off { background: #f87171; color: #f87171; animation: blink 1s steps(2) infinite; }
+  @keyframes blink { 50% { opacity: .35; } }
+
+  /* bouton fantôme (Journal) */
+  .btn-ghost { cursor: pointer; font-family: inherit; transition: background .15s ease, transform .1s ease; }
+  .btn-ghost:hover { background: rgba(245,179,1,.2); color: #fff; }
+  .btn-ghost:active { transform: translateY(1px); }
+
+  /* ============ CENTRE : plateau sur le felt ============ */
+  #boardwrap { position: relative; z-index: 2; flex: 1; display: flex; align-items: center; justify-content: center; padding: 8px clamp(10px, 3vw, 30px); }
+
+  /* talon (pioche) : pile de dominos face cachée, coin haut-droit */
+  .boneyard { position: absolute; top: 6px; right: clamp(12px, 3vw, 30px); display: flex; align-items: center; gap: 8px; z-index: 4; }
+  .boneyard .stack { position: relative; width: 34px; height: 52px; }
+  .boneyard .stack i {
+    position: absolute; inset: 0; border-radius: 7px;
+    background: linear-gradient(165deg, #ffffff, #ecebe4);
+    border: 1px solid rgba(93,88,72,.28); box-shadow: 0 3px 7px rgba(0,0,0,.28), 0 1px 2px rgba(0,0,0,.16);
+  }
+  /* Reflet sur les faces cachées du talon */
+  .boneyard .stack i::after { content: ""; position: absolute; inset: 0; border-radius: inherit; background: linear-gradient(115deg, rgba(255,255,255,.32), transparent 55%); }
+  .boneyard .stack i:nth-child(1) { transform: translate(-8px, 8px) rotate(-6deg); opacity: .72; }
+  .boneyard .stack i:nth-child(2) { transform: translate(-4px, 4px) rotate(-3deg); opacity: .9; }
+  .boneyard .count { background: rgba(10,40,20,.6); border: 1px solid rgba(255,255,255,.18); color: #fff;
+    font-weight: 800; font-size: 13px; padding: 4px 10px; border-radius: 20px; }
+
+  /* Plateau : chaîne CONTINUE — les dominos se touchent bout à bout comme dans un vrai jeu */
+  #board {
+    display: flex; flex-wrap: wrap; gap: 0; align-items: center; justify-content: center;
+    max-width: min(96vw, 880px); padding: 14px; border-radius: 18px;
+    --half-b: clamp(36px, 6.8vw, 54px); /* taille d'une moitié — partagée avec les zones de pose */
+  }
+  /* dominos du plateau : plus présents sur la table */
+  #board .half { width: var(--half-b); }
+  /* coins adoucis aux jonctions pour une chaîne fluide */
+  #board .tile { border-radius: 7px; }
+
+  /* ============ Animation de pose : saut 3D vers le plateau (adapté de la démo Domino Master) ============ */
+  @keyframes dominoJumpToBoard {
+    0%   { transform: translate(0, 12px) scale(.9) rotate(var(--rot-start)); box-shadow: 0 6px 16px -2px rgba(0,0,0,.4); }
+    45%  { transform: translate(var(--tx-mid), var(--ty-mid)) scale(1.35) rotate(var(--rot-mid)); box-shadow: 0 42px 50px -10px rgba(0,0,0,.6), 0 20px 25px -5px rgba(0,0,0,.35); }
+    85%  { transform: translate(var(--tx-end), var(--ty-end)) scale(1) rotate(0deg); box-shadow: 0 4px 10px -2px rgba(0,0,0,.5); }
+    93%  { transform: translate(var(--tx-end), calc(var(--ty-end) - 6px)) scale(1.03) rotate(0deg); box-shadow: 0 12px 20px -4px rgba(0,0,0,.4); }
+    100% { transform: translate(var(--tx-end), var(--ty-end)) scale(1) rotate(0deg); box-shadow: 0 6px 16px -2px rgba(0,0,0,.4); }
+  }
+  /* !important sur position : la règle .tile { position:relative } (déclarée plus bas,
+     même spécificité) écraserait le fixed et enverrait le fantôme hors écran. */
+  .jump-ghost { position: fixed !important; z-index: 60; pointer-events: none; margin: 0 !important; animation: dominoJumpToBoard .75s cubic-bezier(.25,1,.5,1) forwards; }
+
+  /* Onde d'impact sur le felt à l'atterrissage */
+  @keyframes feltImpactRing { 0% { transform: scale(.4); opacity: .9; border-width: 4px; } 100% { transform: scale(2.2); opacity: 0; border-width: 1px; } }
+  .impact-wave { position: fixed; width: 84px; height: 84px; margin: -42px 0 0 -42px; border-radius: 50%; border: 3px solid rgba(245,179,1,.85); pointer-events: none; animation: feltImpactRing .5s ease-out forwards; z-index: 55; }
+
+  /* Zones de pose : indiquent où le prochain domino peut aller (affichées à mon tour) */
+  @keyframes pulseTarget { 0%,100% { opacity: .55; transform: scale(1); } 50% { opacity: 1; transform: scale(1.06); } }
+  .drop-zone { position: relative; flex: 0 0 auto; display: flex; align-items: center; justify-content: center; width: calc(var(--half-b) * 2 + 3px); height: calc(var(--half-b) + 3px); border-radius: 8px; border: 2px dashed rgba(245,179,1,.9); background: rgba(245,179,1,.10); animation: pulseTarget 1.2s infinite; }
+  .drop-zone::after { content: "+"; font-family: "Fredoka", sans-serif; font-size: calc(var(--half-b) * .6); color: rgba(245,179,1,.95); text-shadow: 0 1px 3px rgba(0,0,0,.4); }
+  #board .empty { color: rgba(255,255,255,.75); font-style: italic; font-size: 15px; text-shadow: 0 1px 3px rgba(0,0,0,.4); }
+
+  /* ============ DOMINOS (blancs nets, ombre douce flottante — style référence) ============ */
+  .tile {
+    position: relative;
+    display: inline-flex; flex: 0 0 auto; border-radius: 10px; overflow: hidden;
+    background: linear-gradient(165deg, var(--tile-hi), var(--tile-lo));
+    border: 1px solid rgba(93,88,72,.28);
+    box-shadow: 0 4px 9px rgba(0,0,0,.3), 0 1px 2px rgba(0,0,0,.18);
+  }
+  /* Lueur très subtile en haut de la face (propreté du blanc) */
+  .tile::before {
+    content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; z-index: 1;
+    background: linear-gradient(180deg, rgba(255,255,255,.45) 0%, rgba(255,255,255,0) 38%);
+  }
+  /* Chaque moitié est un CARRÉ : le domino complet fait donc 2:1 (allongé),
+     comme sur la référence — horizontal sur le plateau, vertical dans la main. */
+  .half {
+    width: clamp(34px, 6.4vw, 50px); aspect-ratio: 1 / 1; padding: 8%;
+    display: grid; grid-template: repeat(3, 1fr) / repeat(3, 1fr); place-items: center;
+  }
+  .half + .half { border-left: 1px solid rgba(0,0,0,.2); }
+  /* Pips : ronds noirs nets, légère profondeur sans brillance.
+     Les cellules de la grille sont carrées → % = cercle garanti à toutes les tailles. */
+  .dot-pip {
+    width: 72%; height: 72%; border-radius: 50%;
+    background: radial-gradient(circle at 40% 32%, #454b56 0%, var(--pip) 62%);
+    box-shadow: inset 0 -1px 1.5px rgba(0,0,0,.45), 0 1px 1px rgba(255,255,255,.35);
+  }
+  /* doubles : liseré or INTÉRIEUR (propre dans une chaîne jointe) */
+  .tile.double { box-shadow: 0 4px 9px rgba(0,0,0,.3), 0 1px 2px rgba(0,0,0,.18), inset 0 0 0 2px rgba(245,179,1,.65); }
+
+  /* ============ BAS : ma main + actions ============ */
+  #bottombar { position: relative; z-index: 3; padding: 6px clamp(10px, 3vw, 28px) 14px; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+
+  .handlabel { color: var(--muted); font-size: 12.5px; font-weight: 700; letter-spacing: .3px; text-shadow: 0 1px 2px rgba(0,0,0,.4); }
+  #mehand { display: flex; gap: clamp(6px, 1.2vw, 12px); flex-wrap: wrap; justify-content: center; align-items: flex-end; min-height: clamp(90px, 15vw, 124px); }
+  #mehand .empty { color: rgba(255,255,255,.75); font-style: italic; text-shadow: 0 1px 3px rgba(0,0,0,.4); align-self: center; }
+
+  /* dominos de la main : plus grands, interactifs, VERTICAUX (1:2) comme sur la référence */
+  .hand .tile { cursor: pointer; transition: transform .12s ease, box-shadow .12s ease, filter .2s ease; margin-bottom: 6px; flex-direction: column; }
+  .hand .tile:hover { transform: translateY(-8px); }
+  /* séparateur horizontal entre les deux moitiés empilées */
+  .hand .tile .half + .half { border-left: none; border-top: 1px solid rgba(0,0,0,.2); }
+  /* Non jouables : grisés quand c'est votre tour (comme sur la référence) */
+  .hand .tile.dim { filter: grayscale(.9) brightness(.72); cursor: default; }
+  .hand .tile.playable {
+    box-shadow: 0 4px 9px rgba(0,0,0,.3), 0 1px 2px rgba(0,0,0,.18), 0 0 0 3px var(--gold);
+    animation: ready 2.8s ease-in-out infinite;
+  }
+  @keyframes ready { 0%,100% { transform: translateY(-5px);} 50% { transform: translateY(-11px);} }
+  .hand .tile.playable:hover { box-shadow: 0 7px 14px rgba(0,0,0,.38), 0 0 0 3px var(--gold); }
+
+  /* --- boutons d'action --- */
+  #actions { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; min-height: 46px; align-items: center; }
+  button { font-family: "Fredoka", sans-serif; cursor: pointer; border-radius: 14px; transition: transform .1s ease, box-shadow .15s ease, filter .15s ease; }
+  button:active { transform: translateY(2px); }
+  button.primary {
+    background: linear-gradient(180deg, var(--cta-hi), var(--cta-lo)); color: #fff; font-weight: 600;
+    border: none; padding: 12px 26px; font-size: 16px; letter-spacing: .3px;
+    box-shadow: 0 4px 0 #175bb0, var(--shadow-soft);
+  }
+  button.primary:hover { filter: brightness(1.06); }
+  button.primary:active { box-shadow: 0 2px 0 #175bb0, var(--shadow-soft); }
+  button.soft {
+    background: linear-gradient(180deg, #fffdf7, #f0e7d3); color: var(--ink); font-weight: 600;
+    border: 2px solid var(--tile-edge); padding: 9px 18px; font-size: 14.5px;
+    box-shadow: var(--shadow-chunk), var(--shadow-soft);
+  }
+  button.soft:hover { filter: brightness(1.03); }
+  button.small { padding: 7px 14px; font-size: 13px; border-radius: 12px; }
+  button.danger { color: #b91c1c; }
+  .waitnote { color: var(--muted); font-weight: 700; font-size: 14px; text-shadow: 0 1px 2px rgba(0,0,0,.4); }
+  .waitnote b { color: #fff; }
+
+  /* bandeau mode (bas centre) */
+  #modebar { background: rgba(10,40,20,.55); border: 1px solid rgba(255,255,255,.16); color: var(--muted);
+    font-weight: 700; font-size: 12.5px; padding: 5px 16px; border-radius: 20px; backdrop-filter: blur(3px); }
+  #modebar b { color: #fff; }
+
+  /* ============ JOURNAL (tiroir latéral) ============ */
+  #logbtn-fab { position: fixed; right: 14px; bottom: 14px; z-index: 6; }
+  #logpanel {
+    position: fixed; top: 0; right: 0; height: 100%; width: min(320px, 86vw); z-index: 7;
+    background: rgba(9,26,15,.94); backdrop-filter: blur(6px); border-left: 1px solid rgba(255,255,255,.14);
+    transform: translateX(100%); transition: transform .28s cubic-bezier(.2,.8,.2,1);
+    display: flex; flex-direction: column; padding: 16px; box-shadow: -12px 0 30px rgba(0,0,0,.4);
+  }
+  #logpanel.open { transform: translateX(0); }
+  #logpanel h2 { margin: 0 0 10px; font-family: "Fredoka", sans-serif; font-size: 18px; color: #fff; display: flex; justify-content: space-between; align-items: center; }
+  #logpanel .close { cursor: pointer; background: none; border: none; color: var(--muted); font-size: 20px; line-height: 1; padding: 4px; }
+  #logpanel .close:hover { color: #fff; }
+  #log { list-style: none; margin: 0; padding: 0; overflow-y: auto; flex: 1; font-size: 13.5px; line-height: 1.4; }
+  #log li { padding: 6px 2px; border-bottom: 1px dashed rgba(255,255,255,.12); color: var(--muted); }
+  #log li:last-child { color: #ffe9a8; font-weight: 700; }
+
+  /* ============ OVERLAY (fin de manche / partie) ============ */
+  #overlay { position: fixed; inset: 0; background: rgba(6,20,11,.7); backdrop-filter: blur(3px); display: none; align-items: center; justify-content: center; z-index: 20; }
+  #overlay .card {
+    background: linear-gradient(180deg, #fffdf7, #f4ecd9); color: var(--ink); border-radius: 22px;
+    padding: 30px 36px; text-align: center; max-width: 420px; margin: 16px;
+    box-shadow: 0 8px 0 rgba(0,0,0,.2), var(--shadow-soft); border: 3px solid #fff;
+  }
+  #overlay .big { font-family: "Fredoka", sans-serif; font-size: 24px; font-weight: 600; margin-bottom: 8px; color: #17251b; }
+  #overlay .sub { color: #5b6b5f; margin-bottom: 20px; font-weight: 600; }
+
+  /* ============ MENU PRINCIPAL (configuration de la partie) ============ */
+  #menu { position: fixed; inset: 0; z-index: 30; display: flex; align-items: center; justify-content: center; padding: 24px; overflow-y: auto;
+    background-color: var(--felt-2);
+    background-image:
+      radial-gradient(rgba(255,255,255,.035) 1px, transparent 1.4px),
+      radial-gradient(130% 100% at 50% 28%, var(--felt-1) 0%, var(--felt-2) 46%, var(--felt-3) 76%, var(--felt-4) 100%);
+    background-size: 7px 7px, cover;
+  }
+  #menu::before { content: ""; position: absolute; inset: 0; pointer-events: none; background: radial-gradient(145% 125% at 50% 42%, transparent 52%, rgba(0,0,0,.38) 100%); }
+  #menu[hidden] { display: none; }
+
+  .menu-card { position: relative; width: min(440px, 100%); background: linear-gradient(180deg, #fffdf6, #f7efdd); border-radius: 26px; padding: 28px 30px 24px;
+    box-shadow: 0 30px 60px rgba(4,26,13,.5), inset 0 2px 0 rgba(255,255,255,.9); text-align: center; animation: menuIn .3s ease-out; }
+  @keyframes menuIn { from { opacity: 0; transform: translateY(14px) scale(.97); } to { opacity: 1; transform: none; } }
+
+  .menu-logo { display: flex; justify-content: center; margin-bottom: 8px; }
+  .menu-logo .tile { transform: scale(.85); }
+  .menu-title { font-family: "Fredoka", sans-serif; font-size: 40px; letter-spacing: 4px; color: #1c6b3a; margin: 2px 0 0; text-shadow: 0 2px 0 rgba(255,255,255,.7), 0 8px 18px rgba(28,92,51,.22); }
+  .menu-sub { color: #7a6c58; font-size: 14px; margin: 4px 0 20px; font-weight: 600; }
+
+  .field { display: block; text-align: left; margin-bottom: 15px; cursor: default; }
+  .field > span { display: flex; justify-content: space-between; align-items: baseline; font-size: 12px; font-weight: 800; letter-spacing: .4px; color: #6b5d4a; margin-bottom: 7px; text-transform: uppercase; }
+  .field input[type=text] { width: 100%; padding: 12px 14px; border-radius: 14px; border: 2px solid rgba(90,70,40,.16); background: #fffefb; font-family: inherit; font-weight: 800; font-size: 16px; color: #3a2f22; outline: none; transition: border-color .15s ease, box-shadow .15s ease; }
+  .field input[type=text]:focus { border-color: var(--gold); box-shadow: 0 0 0 4px rgba(245,179,1,.2); }
+  .field input[type=range] { width: 100%; accent-color: var(--cta-lo); height: 30px; cursor: pointer; margin: 0; }
+  #mtarget-val { color: #1c6b3a; font-family: "Fredoka", sans-serif; font-size: 14px; letter-spacing: 0; text-transform: none; }
+
+  .seg { display: flex; gap: 8px; }
+  .seg button { flex: 1; padding: 10px 0; border-radius: 999px; border: 2px solid rgba(90,70,40,.16); background: #fffefb; font-family: "Fredoka", sans-serif; font-weight: 600; font-size: 17px; color: #5c4d3a; box-shadow: 0 2px 0 rgba(90,70,40,.18); }
+  .seg button:hover { transform: translateY(-1px); filter: brightness(1.02); }
+  .seg button.on { background: linear-gradient(180deg, var(--cta-hi), var(--cta-lo)); color: #fff; border-color: transparent; box-shadow: 0 4px 12px rgba(31,111,208,.4); }
+
+  .field.check { display: flex; align-items: center; gap: 10px; cursor: pointer; margin-bottom: 18px; }
+  .field.check > span { display: block; margin: 0; text-transform: none; letter-spacing: 0; font-size: 14px; color: #5c4d3a; flex: 1; }
+  .field.check input { width: 20px; height: 20px; accent-color: var(--cta-lo); cursor: pointer; flex: none; margin: 0; }
+
+  button.primary.big { width: 100%; padding: 15px 0; font-size: 20px; border-radius: 999px; letter-spacing: .5px; }
+  .menu-hint { color: #8a7b64; font-size: 12.5px; margin-top: 13px; line-height: 1.45; font-weight: 600; }
+
+  @media (max-width: 560px) {
+    /* mobile : les joueurs repassent en rangée compacte au-dessus du plateau.
+       #boardwrap est un flex en ligne → on passe en colonne pour que la rangée
+       des sièges prenne toute la largeur et se place AU-DESSUS du plateau. */
+    #boardwrap { flex-direction: column; }
+    #seats { position: static; display: flex; gap: 8px; justify-content: center; align-items: flex-start; flex-wrap: wrap; padding: 4px 10px 0; width: 100%; }
+    .seat.pos-top, .seat.pos-bottom, .seat.pos-left, .seat.pos-right { position: static; transform: none; width: auto; min-width: 76px; }
+    .avatar { width: 48px; height: 48px; font-size: 20px; border-width: 3px; }
+    .sname { font-size: 12px; margin-top: 4px; }
+    /* la pioche passe en bas à droite pour ne pas chevaucher la rangée de joueurs */
+    .boneyard { top: auto; bottom: 6px; right: 8px; transform: scale(.9); transform-origin: bottom right; }
+    #hud { max-width: 100%; justify-content: flex-start; }
+    button.primary { padding: 11px 20px; font-size: 15px; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { animation: none !important; transition: none !important; }
+  }
+</style>
+</head>
+<body>
+<div id="table">
+
+  <!-- BARRE HAUTE : HUD (les joueurs sont disposés autour du plateau) -->
+  <header id="topbar">
+    <div id="hud">
+      <button id="menubtn" class="pill btn-ghost" title="Menu principal (avant le lancement)">Menu</button>
+      <span class="pill" title="État de la connexion"><span class="dot off" id="conn"></span></span>
+      <span class="pill" id="h-round">Manche –</span>
+      <span class="pill" id="h-target">Cible –</span>
+      <span class="pill" id="h-boneyard">Pioche –</span>
+      <span class="pill phase" id="h-phase">connexion…</span>
+    </div>
+  </header>
+
+  <!-- CENTRE : plateau sur le felt + joueurs disposés autour -->
+  <main id="boardwrap">
+    <div id="seats"></div>
+    <div class="boneyard" id="boneyard" title="Talon (pioche)">
+      <div class="stack"><i></i><i></i><i></i></div>
+      <span class="count" id="bcount">0</span>
+    </div>
+    <div id="board"></div>
+  </main>
+
+  <!-- BAS : ma main + actions -->
+  <footer id="bottombar">
+    <div class="handlabel" id="handlabel">Votre main</div>
+    <div id="mehand" class="hand"></div>
+    <div id="actions"></div>
+    <div id="modebar">Avec Talon · Manche <b>–</b></div>
+  </footer>
+
+</div>
+
+<!-- JOURNAL (tiroir) -->
+<button id="logbtn-fab" class="pill btn-ghost" title="Ouvrir le journal de partie">Journal</button>
+<aside id="logpanel">
+  <h2>Journal <button class="close" id="logclose" aria-label="Fermer le journal">×</button></h2>
+  <ul id="log"></ul>
+</aside>
+
+<!-- OVERLAY -->
+<div id="overlay"><div class="card">
+  <div class="big" id="ovbig"></div>
+  <div class="sub" id="ovsub"></div>
+  <div style="display:flex;gap:10px;justify-content:center" id="ovbtns"></div>
+</div></div>
+
+<!-- MENU PRINCIPAL : configuration de la partie -->
+<div id="menu">
+  <div class="menu-card">
+    <div class="menu-logo" id="mlogo"></div>
+    <h1 class="menu-title">DOMINO</h1>
+    <p class="menu-sub">Configurez la table, puis rejoignez-la.</p>
+
+    <label class="field">
+      <span>Votre nom</span>
+      <input id="mname" type="text" maxlength="20" placeholder="Joueur" autocomplete="off">
+    </label>
+
+    <div class="field">
+      <span>Score cible · <b id="mtarget-val">100</b>&nbsp;pts</span>
+      <input id="mtarget" type="range" min="50" max="300" step="25" value="100">
+    </div>
+
+    <div class="field">
+      <span>Joueurs à la table</span>
+      <div class="seg" id="mplayers">
+        <button type="button" data-n="2">2</button><button type="button" data-n="3">3</button><button type="button" data-n="4" class="on">4</button>
+      </div>
+    </div>
+
+    <label class="field check">
+      <input id="mbots" type="checkbox">
+      <span>Compléter la table avec des bots au lancement</span>
+    </label>
+
+    <button id="mplay" class="primary big">Jouer</button>
+    <p class="menu-hint">Les réglages s'appliquent à toute la table avant le lancement.</p>
+  </div>
+</div>
+
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const PIPS = {1:[4],2:[0,8],3:[0,4,8],4:[0,2,6,8],5:[0,2,4,6,8],6:[0,2,3,5,6,8]};
+const RING = ["var(--ring-0)","var(--ring-1)","var(--ring-2)","var(--ring-3)"];
+
+let me = null, state = null, prevState = null, ws = null, reconnectTimer = null;
+let pendingDrop = null; // {a, b, rect} — le domino que je viens de cliquer (pour l'animation)
+// Dernière action de chaque joueur ({type:"play",a,b} ou {type:"pass"}) : affichée en
+// badge sur son siège et conservée jusqu'à sa prochaine action / la manche suivante.
+let lastAction = {};
+
+function name() {
+  const n = (localStorage.getItem("domino-name") || "").trim();
+  return n || "Joueur"; // le nom se règle dans le menu principal
+}
+
+function setConn(on) { $("conn").className = "dot " + (on ? "on" : "off"); }
+
+function connect() {
+  const proto = location.protocol === "https:" ? "wss" : "ws";
+  ws = new WebSocket(`${proto}://${location.host}`);
+  ws.onopen = () => { setConn(true); ws.send(JSON.stringify({t:"join", name: name()})); };
+  ws.onmessage = (e) => {
+    let d; try { d = JSON.parse(e.data); } catch { return; }
+    if (d.t === "error") { alert(d.msg); return; }
+    me = d.your_id; prevState = state; state = d; render();
+  };
+  ws.onclose = () => { setConn(false); clearTimeout(reconnectTimer); reconnectTimer = setTimeout(connect, 2000); };
+}
+
+function half(n) {
+  const dots = PIPS[n] || [];
+  let cells = "";
+  for (let i = 0; i < 9; i++) cells += dots.includes(i) ? '<span class="dot-pip"></span>' : "<span></span>";
+  return `<div class="half">${cells}</div>`;
+}
+
+function tileHtml(a, b, cls) {
+  return `<div class="tile ${cls || ""}" data-a="${a}" data-b="${b}">${half(a)}${half(b)}</div>`;
+}
+
+// Position du siège autour de la table, vue depuis MOI (en bas) : le joueur dont c'est
+// le tour suivant est à gauche, comme dans une vraie partie.
+function seatPos(i) {
+  const n = state.players.length;
+  if (i === me) return "pos-bottom";
+  const off = ((i - me) % n + n) % n; // rang dans l'ordre de tour, vu depuis moi
+  if (n <= 2) return "pos-top";
+  if (n === 3) return off === 1 ? "pos-left" : "pos-right";
+  return off === 1 ? "pos-left" : off === 2 ? "pos-top" : "pos-right";
+}
+
+// Avatar attribué de façon stable au joueur : hash du nom → avatarN.png (20 visuels).
+function avatarFor(name) {
+  let h = 7;
+  for (const c of String(name || "?")) h = (h * 31 + c.codePointAt(0)) >>> 0;
+  return `/avatars/avatar${h % 20}.png`;
+}
+
+function seatHtml(p, i) {
+  const isYou = p.id === me;
+  const isTurn = state.turn === p.id && state.phase === "playing";
+  const botLevel = (p.kind && p.kind.bot) ? p.kind.bot : null;
+  const initial = ((p.name || "?").trim().charAt(0).toUpperCase()) || "?";
+  let tags = "";
+  if (botLevel) tags += `<span class="tag tag-bot">Bot ${botLevel}</span>`;
+  if (!p.connected) tags += `<span class="tag tag-off">hors-ligne</span>`;
+  if (isYou) tags += `<span class="tag tag-you">vous</span>`;
+  // Badge d'action : le dernier domino joué (ou la passe), visible jusqu'au prochain tour.
+  const act = lastAction[p.id];
+  let badge = "";
+  if (act && state.phase === "playing") {
+    badge = act.type === "play"
+      ? `<div class="abadge" title="${p.name} a joué ${act.a}|${act.b}"><span>joue</span>${tileHtml(act.a, act.b, "mini")}</div>`
+      : `<div class="abadge pass" title="${p.name} a passé">passe</div>`;
+  }
+  return `<div class="seat ${seatPos(i)} ${isTurn ? "turn" : ""} ${isYou ? "you" : ""}" data-id="${p.id}" style="--ring:${RING[i % RING.length]}">
+    <div class="avatar"><img src="${avatarFor(p.name)}" alt="" onerror="this.remove()">${initial}</div>
+    <div class="sname">${p.name}</div>
+    <div class="spill"><b>${p.score}</b>/${state.target}</div>
+    <div class="stags">${tags}</div>
+    ${badge}
+  </div>`;
+}
+
+// Animation « saut 3D » (adaptée de la démo Domino Master) : quand un nouveau domino
+// apparaît sur le plateau, un fantôme décolle de la place du joueur — ma main si c'est
+// moi (il bascule de vertical à horizontal en vol), sinon son avatar —, trace une
+// parabole avec pic agrandi et retombe exactement là où le domino se pose, avec un
+// petit rebond puis une onde d'impact sur le felt. La vraie tuile n'apparaît qu'à
+// l'atterrissage → illusion parfaite.
+function animateDrop(boardEl) {
+  const mine = pendingDrop; pendingDrop = null; // un seul tir par mise à jour d'état
+  if (!state || !prevState || state.phase !== "playing") return;
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+
+  const nt = state.board.tiles, pt = prevState.board ? prevState.board.tiles : [];
+  if (nt.length !== pt.length + 1) return; // rien de posé depuis la dernière mise à jour
+
+  const same = (x, y) => x && y && x[0] === y[0] && x[1] === y[1];
+  let newIdx = same(nt[0], pt[0]) ? nt.length - 1 : 0; // posé à droite ou à gauche
+
+  // Les zones de pose sont aussi des enfants du plateau → ne considérer que les tuiles.
+  const toEl = Array.from(boardEl.children).filter(el => el.classList.contains("tile"))[newIdx];
+  if (!toEl) return;
+
+  // Qui a posé ? Ma main vient de perdre un domino → c'est moi (détection par taille
+  // de main, plus fiable qu'une comparaison de valeurs). Sinon : l'avatar du joueur.
+  const myPrev = prevState.players && prevState.players.find(p => p.id === me);
+  const myNow = state.players && state.players.find(p => p.id === me);
+  const iPlayed = !!(myPrev && myNow && myNow.hand_len === myPrev.hand_len - 1);
+
+  let fromRect = null;
+  if (iPlayed && mine) {
+    fromRect = mine.rect;
+  } else if (!iPlayed && prevState.phase === "playing" && prevState.turn != null) {
+    const av = document.querySelector(`#seats .seat[data-id="${prevState.turn}"] .avatar`);
+    if (av) fromRect = av.getBoundingClientRect();
+  }
+  if (!fromRect) return;
+
+  // Fantôme : copie de la tuile cible (déjà horizontale, taille du plateau).
+  const toRect = toEl.getBoundingClientRect();
+  const ghost = toEl.cloneNode(true);
+  ghost.className = "tile jump-ghost" + (toEl.classList.contains("double") ? " double" : "");
+  document.body.appendChild(ghost);
+  const gw = ghost.offsetWidth, gh = ghost.offsetHeight;
+
+  // Centrage sur les centres départ/arrivée → le translate déplace le centre.
+  const sx = fromRect.left + fromRect.width / 2, sy = fromRect.top + fromRect.height / 2;
+  const tx = toRect.left + toRect.width / 2, ty = toRect.top + toRect.height / 2;
+  ghost.style.left = (sx - gw / 2) + "px";
+  ghost.style.top = (sy - gh / 2) + "px";
+
+  const dx = tx - sx, dy = ty - sy;
+  // Bascule : mon domino part vertical (comme dans la main) et se pose horizontal ;
+  // sens de rotation selon le côté joué. Les poses des bots volent déjà horizontales.
+  const spin = newIdx === 0 ? -1 : 1;
+  ghost.style.setProperty("--rot-start", iPlayed ? `${spin * 90}deg` : "0deg");
+  ghost.style.setProperty("--tx-mid", (dx * .5 + spin * 34) + "px");
+  ghost.style.setProperty("--ty-mid", (dy - Math.max(120, Math.hypot(dx, dy) * .3)) + "px");
+  ghost.style.setProperty("--rot-mid", `${spin * (iPlayed ? 28 : 16)}deg`);
+  ghost.style.setProperty("--tx-end", dx + "px");
+  ghost.style.setProperty("--ty-end", dy + "px");
+
+  toEl.style.visibility = "hidden"; // la vraie tuile n'apparaît qu'à l'atterrissage
+  const done = () => {
+    if (toEl.isConnected) toEl.style.visibility = "";
+    ghost.remove();
+    // Onde d'impact sur le felt, centrée sur le point de chute.
+    const wave = document.createElement("div");
+    wave.className = "impact-wave";
+    wave.style.left = tx + "px";
+    wave.style.top = ty + "px";
+    document.body.appendChild(wave);
+    setTimeout(() => wave.remove(), 600);
+  };
+  ghost.addEventListener("animationend", done, { once: true });
+}
+
+function render() {
+  if (!state) return;
+
+  // Menu : resynchronise les contrôles sur l'état confirmé par le serveur,
+  // et se referme si la partie quitte la phase d'attente.
+  if (resyncMenu && !menuEl.hidden) { syncMenu(); resyncMenu = false; }
+  if (!menuEl.hidden && state.phase !== "waiting") menuEl.hidden = true;
+
+  const phaseTxt = {waiting:"en attente", playing:"manche en cours", round_over:"manche terminée", match_over:"partie terminée"}[state.phase] || state.phase;
+
+  // HUD
+  $("h-round").innerHTML = "Manche <b>" + state.round + "</b>";
+  $("h-target").innerHTML = "Cible <b>" + state.target + "</b> pts";
+  $("h-boneyard").innerHTML = "Pioche <b>" + state.boneyard_len + "</b>";
+  $("h-phase").textContent = phaseTxt;
+  $("bcount").textContent = state.boneyard_len;
+  // La pile du talon disparaît quand la pioche est vide.
+  $("boneyard").style.display = state.boneyard_len ? "" : "none";
+  $("modebar").innerHTML = "Avec Talon · Manche <b>" + state.round + "</b>";
+
+  // --- détection des actions (pose / passe) depuis la dernière mise à jour d'état ---
+  if (state.phase === "waiting") lastAction = {};
+  else if (prevState && prevState.phase === "playing" && state.phase === "playing") {
+    if (state.round !== prevState.round) lastAction = {}; // nouvelle manche → badges remis à zéro
+    else {
+      const nt = state.board.tiles, pt = prevState.board.tiles;
+      const sameT = (x, y) => x && y && x[0] === y[0] && x[1] === y[1];
+      if (nt.length > pt.length) {
+        // un domino a été posé : c'est le joueur dont c'était le tour qui l'a joué
+        const who = prevState.turn;
+        const t = sameT(nt[0], pt[0]) ? nt[nt.length - 1] : nt[0];
+        if (who != null) lastAction[who] = { type: "play", a: t[0], b: t[1] };
+      } else if (state.turn !== prevState.turn && state.turn != null) {
+        // le tour a avancé sans domino posé → le joueur précédent a passé
+        const who = prevState.turn;
+        if (who != null) lastAction[who] = { type: "pass" };
+      }
+    }
+  }
+
+  // joueurs autour de la table
+  $("seats").innerHTML = state.players.map((p, i) => seatHtml(p, i)).join("");
+
+  // plateau + zones de pose (où je peux jouer quand c'est mon tour)
+  const board = $("board");
+  const canPlayNow = state.phase === "playing" && state.turn === me && state.legal_moves.length > 0;
+  if (!state.board.tiles.length) {
+    // Plateau vide : une zone centrale si je dois poser le premier domino.
+    board.innerHTML = canPlayNow ? '<div class="drop-zone"></div>' : '<div class="empty">— aucun domino posé —</div>';
+  } else {
+    const sides = new Set(state.legal_moves.map(m => m[1]));
+    let html = state.board.tiles.map(([a, b]) => tileHtml(a, b, a === b ? "double" : "")).join("");
+    if (canPlayNow) {
+      if (sides.has("Left"))  html = '<div class="drop-zone"></div>' + html;
+      if (sides.has("Right")) html += '<div class="drop-zone"></div>';
+    }
+    board.innerHTML = html;
+  }
+  animateDrop(board); // le dernier domino posé décolle et retombe en place
+
+  // ma main — ne se reconstruit que si son contenu change, sinon l'animation
+  // des dominos jouables redémarrerait à chaque message reçu.
+  const my = state.players.find(p => p.id === me) || null;
+  const handEl = $("mehand");
+  if (state.phase === "playing" && my && my.hand) {
+    const playable = new Set(state.legal_moves.map(m => `${m[0].a}-${m[0].b}`));
+    const myTurn = state.turn === me;
+    const handKey = [myTurn, playable.size, my.hand.map(t => t.a + "-" + t.b).join(",")].join("|");
+    if (handEl.dataset.key !== handKey) {
+      // À mon tour : jouables surlignés or, autres grisés. Sinon : tout normal.
+      handEl.innerHTML = my.hand.map(t => {
+        const k = `${t.a}-${t.b}`;
+        return tileHtml(t.a, t.b, myTurn ? (playable.has(k) ? "playable" : "dim") : "");
+      }).join("");
+      // Le clic est validé sur l'état VIVANT au moment du clic (et non sur un
+      // snapshot figé), pour rester fiable même si le DOM n'est pas reconstruit.
+      handEl.onclick = (e) => {
+        const el = e.target.closest(".tile");
+        if (!el || !state || state.turn !== me) return;
+        const key = `${el.dataset.a}-${el.dataset.b}`;
+        const mv = state.legal_moves.find(m => `${m[0].a}-${m[0].b}` === key);
+        if (!mv) return;
+        // On mémorise la position du domino cliqué : l'animation de pose part d'ici.
+        pendingDrop = { a: +el.dataset.a, b: +el.dataset.b, rect: el.getBoundingClientRect(), side: mv[1] };
+        el.style.opacity = "0"; // il disparaît de la main dès le clic ; le fantôme prend le relais
+        ws.send(JSON.stringify({t: "play", tile: key, side: mv[1]}));
+      };
+      handEl.dataset.key = handKey;
+    }
+  } else if (my) {
+    const handKey = "len:" + my.hand_len;
+    if (handEl.dataset.key !== handKey) {
+      handEl.innerHTML = `<div class="empty">— ${my.hand_len} dominos dans votre main —</div>`;
+      handEl.onclick = null;
+      handEl.dataset.key = handKey;
+    }
+  } else if (handEl.dataset.key !== "") {
+    handEl.innerHTML = "";
+    handEl.dataset.key = "";
+  }
+
+  // actions
+  const act = $("actions");
+  if (state.phase === "waiting") {
+    act.innerHTML = `
+      <button class="soft small" data-a="addbot" data-l="easy">+ Bot facile</button>
+      <button class="soft small" data-a="addbot" data-l="medium">+ Bot moyen</button>
+      <button class="soft small" data-a="addbot" data-l="hard">+ Bot difficile</button>
+      <button class="soft small danger" data-a="removebot">Retirer le dernier bot</button>
+      <button class="primary" data-a="start">Lancer la partie</button>`;
+  } else if (state.phase === "round_over") {
+    act.innerHTML = `<button class="primary" data-a="next">Manche suivante</button>`;
+  } else if (state.phase === "match_over") {
+    act.innerHTML = `<button class="primary" data-a="start">Revanche</button>`;
+  } else if (state.phase === "playing" && state.turn === me) {
+    act.innerHTML = `
+      <button class="soft" data-a="draw">Piocher</button>
+      <button class="soft" data-a="pass">Passer</button>`;
+  } else if (state.phase === "playing") {
+    const who = state.players.find(p => p.id === state.turn);
+    act.innerHTML = `<span class="waitnote">En attente de <b>${who ? who.name : "?"}</b>…</span>`;
+  }
+  act.onclick = (e) => {
+    const b = e.target.closest("button");
+    if (!b) return;
+    const a = b.dataset.a;
+    if (a === "start") ws.send(JSON.stringify({t: "start"}));
+    else if (a === "next") ws.send(JSON.stringify({t: "next"}));
+    else if (a === "draw") ws.send(JSON.stringify({t: "draw"}));
+    else if (a === "pass") ws.send(JSON.stringify({t: "pass"}));
+    else if (a === "addbot") ws.send(JSON.stringify({t: "add_bot", level: b.dataset.l}));
+    else if (a === "removebot") {
+      const bots = state.players.filter(p => p.kind && p.kind.bot);
+      if (bots.length) ws.send(JSON.stringify({t: "remove_bot", id: bots[bots.length - 1].id}));
+    }
+  };
+
+  // journal
+  $("log").innerHTML = state.log.slice().reverse().map(l => `<li>${l}</li>`).join("");
+
+  // overlays
+  const ov = $("overlay");
+  if (state.phase === "round_over" && state.round_result) {
+    const r = state.round_result;
+    const w = state.players.find(p => p.id === r.winner);
+    ov.style.display = "flex";
+    $("ovbig").textContent = r.kind === "open"
+      ? `🎉 ${w ? w.name : "?"} se déleste de sa main !`
+      : `🔒 Manche bloquée — ${w ? w.name : "?"} garde le moins de points`;
+    $("ovsub").textContent = `${r.awarded} points gagnés${r.tie_break ? " (départage par « la main »)" : ""}`;
+    $("ovbtns").innerHTML = `<button class="primary" onclick="ws.send(JSON.stringify({t:'next'}))">Manche suivante</button>`;
+  } else if (state.phase === "match_over" && state.match_winner != null) {
+    const w = state.players.find(p => p.id === state.match_winner);
+    ov.style.display = "flex";
+    $("ovbig").textContent = `🏆 ${w ? w.name : "?"} remporte la partie !`;
+    $("ovsub").textContent = `Score final : ${w ? w.score : "?"} pts (cible ${state.target})`;
+    $("ovbtns").innerHTML = `<button class="primary" onclick="ws.send(JSON.stringify({t:'start'}))">Revanche</button>`;
+  } else {
+    ov.style.display = "none";
+  }
+}
+
+// tiroir journal
+$("logbtn-fab").onclick = () => $("logpanel").classList.toggle("open");
+$("logclose").onclick = () => $("logpanel").classList.remove("open");
+
+// ---------- Menu principal (configuration de la partie) ----------
+const menuEl = $("menu"), mname = $("mname"), mtarget = $("mtarget");
+let resyncMenu = true; // préremplissage au premier état reçu
+
+$("mlogo").innerHTML = tileHtml(6, 6); // logo : un double-six
+
+function syncMenu() {
+  if (!state) return;
+  mtarget.value = state.target;
+  $("mtarget-val").textContent = state.target;
+  document.querySelectorAll("#mplayers button")
+    .forEach(b => b.classList.toggle("on", +b.dataset.n === state.max_players));
+}
+
+function sendConfig(patch) {
+  if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(Object.assign({ t: "config" }, patch)));
+  resyncMenu = true; // le serveur confirme via l'état suivant
+}
+
+mtarget.addEventListener("input", () => $("mtarget-val").textContent = mtarget.value);
+mtarget.addEventListener("change", () => sendConfig({ target: +mtarget.value }));
+$("mplayers").addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) sendConfig({ max_players: +b.dataset.n }); });
+$("mbots").addEventListener("change", () => sendConfig({ fill_bots: $("mbots").checked }));
+
+function closeMenu() {
+  menuEl.hidden = true;
+  const n = mname.value.trim();
+  if (n) localStorage.setItem("domino-name", n);
+  if (ws && ws.readyState === WebSocket.OPEN && state) {
+    const cur = (state.players.find(p => p.id === me) || {}).name;
+    if (n && n !== cur) ws.send(JSON.stringify({ t: "rename", name: n }));
+  }
+}
+
+$("mplay").addEventListener("click", closeMenu);
+$("menubtn").onclick = () => {
+  if (!state || state.phase !== "waiting") return; // menu verrouillé une fois la manche lancée
+  const mine = state.players.find(p => p.id === me);
+  mname.value = mine ? mine.name : (localStorage.getItem("domino-name") || "");
+  syncMenu();
+  menuEl.hidden = false;
+};
+
+mname.value = localStorage.getItem("domino-name") || "";
+
+connect();
+</script>
+</body>
+</html>

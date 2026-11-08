@@ -1,0 +1,19 @@
+[package]
+name = "domino-server"
+description = "Serveur Domino — local & LAN (WebSocket + client web embarqué)"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "domino"
+path = "src/main.rs"
+
+[dependencies]
+domino-core = { workspace = true }
+tokio = { workspace = true }
+tokio-tungstenite = { workspace = true }
+futures-util = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+rand = { workspace = true }
+clap = { workspace = true }
